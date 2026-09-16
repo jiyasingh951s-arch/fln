@@ -1,192 +1,252 @@
 import * as React from 'react';
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-    ResponsiveContainer,
-    ScatterChart,
-    Scatter,
-    CartesianGrid,
-    Cell,
-} from 'recharts';
 import { useStudentAnalytics } from '../hooks/useStudentAnalytics';
 import './TeacherDashboard.css';
 
 export const TeacherAnalyticsDashboard: React.FC = () => {
     const {
-        students,
-        selectedGrade,
-        setSelectedGrade,
-        selectedLevel,
-        setSelectedLevel,
-        distributionData,
-        correlationData,
+        classes,
+        selectedClassId,
+        setSelectedClassId,
+        selectedCompetency,
+        setSelectedCompetency,
+        analytics,
+        visibleCompetencies,
+        loading,
+        error,
     } = useStudentAnalytics();
 
-    // Filter students who need targeted intervention
-    const interventionList = students.filter((s) => (s.scores?.[selectedLevel] ?? 0) < 50);
+    if (loading && !analytics) {
+        return (
+            <div className="dashboard-container">
+                <div className="chart-card dashboard-status">Loading class analytics...</div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="dashboard-container">
+                <div className="chart-card dashboard-status dashboard-error">
+                    <h3>Unable to load teacher analytics</h3>
+                    <p>{error}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!analytics) {
+        return (
+            <div className="dashboard-container">
+                <div className="chart-card dashboard-status">
+                    <h3>No class available</h3>
+                    <p>There are no classes available for your account yet.</p>
+                </div>
+            </div>
+        );
+    }
+
+    const competencyOptions = analytics.competencies;
+    const priorityGaps = analytics.priorityGaps;
 
     return (
         <div className="dashboard-container">
-            {/* Top Filter Header */}
             <header className="dashboard-header">
                 <div>
-                    <h2>📊 Teacher Diagnostic & Progress Tracker</h2>
-                    <p>Analyze class baseline proficiency and identify targeted intervention groups.</p>
+                    <h2>Teacher Learning Insights</h2>
+                    <p>
+                        Review class-level learning progress and prioritise competencies that need instructional support.
+                    </p>
                 </div>
+
                 <div className="filters-bar">
                     <label>
-                        Grade:{' '}
+                        Class:
                         <select
-                            value={selectedGrade}
-                            onChange={(e) =>
-                                setSelectedGrade(e.target.value === 'all' ? 'all' : Number(e.target.value))
-                            }
+                            value={selectedClassId}
+                            onChange={(event) => setSelectedClassId(event.target.value)}
                         >
-                            <option value="all">All Grades</option>
-                            <option value={1}>Grade 1</option>
-                            <option value={2}>Grade 2</option>
-                            <option value={3}>Grade 3</option>
+                            {classes.map((cls) => (
+                                <option key={cls.id} value={cls.id}>
+                                    {cls.className} - Section {cls.section}
+                                </option>
+                            ))}
                         </select>
                     </label>
+
                     <label>
-                        Competency Level:{' '}
+                        Competency:
                         <select
-                            value={selectedLevel}
-                            onChange={(e) => setSelectedLevel(Number(e.target.value))}
+                            value={selectedCompetency}
+                            onChange={(event) => setSelectedCompetency(event.target.value)}
                         >
-                            <option value={10}>Level 10: Number Sense</option>
-                            <option value={16}>Level 16: Basic Addition</option>
-                            <option value={25}>Level 25: Place Value</option>
-                            <option value={31}>Level 31: Time & Measurement</option>
+                            <option value="all">All Competencies</option>
+                            {competencyOptions.map((competency) => (
+                                <option key={competency.name} value={competency.name}>
+                                    {competency.name}
+                                </option>
+                            ))}
                         </select>
                     </label>
                 </div>
             </header>
 
-            {/* Metric Cards Row */}
             <div className="metrics-grid">
                 <div className="metric-card">
-                    <h4>Total Assessed</h4>
-                    <span className="metric-value">{students.length}</span>
+                    <h4>Total Students</h4>
+                    <span className="metric-value">{analytics.totalStudents}</span>
                 </div>
-                <div className="metric-card alert">
-                    <h4>Needs Intervention</h4>
-                    <span className="metric-value">{distributionData[0]?.count ?? 0}</span>
+                <div className="metric-card">
+                    <h4>Students Assessed</h4>
+                    <span className="metric-value">{analytics.totalAssessed}</span>
                 </div>
                 <div className="metric-card success">
-                    <h4>Proficient</h4>
-                    <span className="metric-value">{distributionData[2]?.count ?? 0}</span>
+                    <h4>Class Score</h4>
+                    <span className="metric-value">{analytics.overallMastery}%</span>
+                </div>
+                <div className="metric-card alert">
+                    <h4>Priority Gaps</h4>
+                    <span className="metric-value">{priorityGaps.length}</span>
                 </div>
             </div>
 
-            {/* Visual Charts Grid */}
             <div className="charts-grid">
-                {/* Chart 1: Proficiency Distribution */}
-                <div className="chart-card">
-                    <h3>Proficiency Breakdown (Level {selectedLevel})</h3>
-                    <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={distributionData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="name" />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip
-                                    cursor={{ fill: 'currentColor', opacity: 0.08 }}
-                                    contentStyle={{
-                                        borderRadius: '0.5rem',
-                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
-                                    }}
-                                />
-                                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                                    {distributionData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
+                <section className="chart-card">
+                    <h3>Competency Performance</h3>
 
-                {/* Chart 2: Attendance vs Score Correlation */}
-                <div className="chart-card">
-                    <h3>Attendance vs. Overall Performance</h3>
-                    <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height={260}>
-                            <ScatterChart>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis
-                                    dataKey="attendance"
-                                    name="Attendance"
-                                    unit="%"
-                                    domain={[50, 100]}
-                                />
-                                <YAxis
-                                    dataKey="avgScore"
-                                    name="Avg Score"
-                                    unit="%"
-                                    domain={[0, 100]}
-                                />
-                                <Tooltip
-                                    cursor={{ strokeDasharray: '3 3', stroke: '#64748b' }}
-                                    contentStyle={{
-                                        borderRadius: '0.5rem',
-                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
-                                    }}
-                                />
-                                <Scatter name="Students" data={correlationData} fill="#6366f1" />
-                            </ScatterChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-            </div>
+                    <div className="competency-list">
+                        {visibleCompetencies.length === 0 ? (
+                            <p className="empty-state">
+                                No competency results are available for this selection.
+                            </p>
+                        ) : (
+                            visibleCompetencies.map((competency) => (
+                                <div className="competency-row" key={competency.name}>
 
-            {/* Actionable Student Remediation Table */}
-            <div className="table-card">
-                <h3>🚨 Students Requiring Targeted Remediation (Level {selectedLevel})</h3>
-                {interventionList.length > 0 ? (
-                    <table className="remediation-table">
-                        <thead>
-                            <tr>
-                                <th>Student ID</th>
-                                <th>Name</th>
-                                <th>Grade</th>
-                                <th>Level {selectedLevel} Score</th>
-                                <th>Action Recommended</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {interventionList.map((s) => (
-                                <tr key={s.id}>
-                                    <td>
-                                        <code>{s.id}</code>
-                                    </td>
-                                    <td>
-                                        <strong>{s.name}</strong>
-                                    </td>
-                                    <td>Grade {s.grade}</td>
-                                    <td>
-                                        <span className="badge-danger">
-                                            {s.scores?.[selectedLevel] ?? 0}%
+                                    <div className="competency-heading">
+                                        <strong>{competency.name}</strong>
+                                        <span>{competency.assessedStudents} assessed</span>
+                                    </div>
+
+                                    {/* Segmented performance bar */}
+                                    <div
+                                        className="performance-bar"
+                                        aria-label={`${competency.name}: ${competency.masteryPct}% strong, ${competency.satisfactoryPct}% satisfactory, ${competency.needsPracticePct}% need practice`}
+                                    >
+                                        {competency.masteryPct > 0 && (
+                                            <div
+                                                className="performance-segment strong-segment"
+                                                style={{
+                                                    width: `${competency.masteryPct}%`,
+                                                }}
+                                            />
+                                        )}
+
+                                        {competency.satisfactoryPct > 0 && (
+                                            <div
+                                                className="performance-segment satisfactory-segment"
+                                                style={{
+                                                    width: `${competency.satisfactoryPct}%`,
+                                                }}
+                                            />
+                                        )}
+
+                                        {competency.needsPracticePct > 0 && (
+                                            <div
+                                                className="performance-segment needs-practice-segment"
+                                                style={{
+                                                    width: `${competency.needsPracticePct}%`,
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+
+                                    {/* Color-coded values */}
+                                    <div className="competency-values">
+                                        <span className="metric-strong">
+                                            <span className="metric-dot strong-dot"></span>
+                                            {competency.masteryPct}% strong
                                         </span>
-                                    </td>
-                                    <td>
-                                        <button className="btn-action">
-                                            Assign Level {selectedLevel} Worksheet
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                ) : (
-                    <p className="empty-state">
-                        🎉 All students are performing at or above baseline proficiency for this level!
-                    </p>
-                )}
+
+                                        <span className="metric-satisfactory">
+                                            <span className="metric-dot satisfactory-dot"></span>
+                                            {competency.satisfactoryPct}% satisfactory
+                                        </span>
+
+                                        <span className="metric-needs-practice">
+                                            <span className="metric-dot needs-practice-dot"></span>
+                                            {competency.needsPracticePct}% need practice
+                                        </span>
+                                    </div>
+
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </section>
+
+                <section className="chart-card">
+                    <h3>Progress Across Assessment Cycles</h3>
+
+                    <div className="progress-list">
+                        {analytics.progress.length === 0 ? (
+                            <p className="empty-state">
+                                No assessment-cycle history is available yet.
+                            </p>
+                        ) : (
+                            analytics.progress.map((point) => (
+                                <div className="progress-row" key={point.cycle}>
+                                    <div>
+                                        <strong>{point.cycle}</strong>
+                                        <span> {point.assessedStudents} assessments</span>
+                                    </div>
+
+                                    <strong className="cycle-score">
+                                        {point.masteryPct}%
+                                    </strong>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </section>
             </div>
+
+            <section className="table-card">
+                <h3>Priority Learning Gaps</h3>
+
+                <p className="section-description">
+                    These are class-level competencies with the highest share of
+                    assessment results marked “Needs Practice”.
+                </p>
+
+                {priorityGaps.length === 0 ? (
+                    <p className="empty-state">
+                        No priority learning gaps detected from the available assessments.
+                    </p>
+                ) : (
+                    <div className="gap-list">
+                        {priorityGaps.map((gap) => (
+                            <div className="gap-row" key={gap.name}>
+                                <div>
+                                    <strong>{gap.name}</strong>
+                                    <span>{gap.assessedStudents} assessed</span>
+                                </div>
+
+                                <div className="gap-metrics">
+                                    <span className="badge-danger">
+                                        <span className="metric-dot needs-practice-dot"></span>
+                                        {gap.needsPracticePct}% need practice
+                                    </span>
+
+                                    <span className="metric-strong">
+                                        <span className="metric-dot strong-dot"></span>
+                                        {gap.masteryPct}% strong
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
         </div>
     );
 };
