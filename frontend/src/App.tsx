@@ -291,7 +291,7 @@ export default function App() {
         );
 
       case 'teacher':
-        return <TeacherDashboard />;
+        return <TeacherDashboard user={currentUser} token={token} />;
 
       case 'volunteer':
         return (
