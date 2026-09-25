@@ -53,8 +53,8 @@ const BASE = `http://127.0.0.1:${address.port}`;
 
 const TEACHER = 'gps-mt-001.t01@fln.org';
 
-function authHeader(): string {
-  return `Bearer ${jwtLib.sign({ email: TEACHER }, JWT_SECRET, { expiresIn: '1h' })}`;
+function authHeader(email: string = TEACHER): string {
+  return `Bearer ${jwtLib.sign({ email }, JWT_SECRET, { expiresIn: '1h' })}`;
 }
 
 async function api(body: Record<string, unknown>) {
@@ -113,6 +113,26 @@ test('rejects missing required fields', async () => {
   }
 });
 
+test('rejects missing schoolId for superadmin', async () => {
+  const res = await fetch(`${BASE}/api/students`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader('superadmin@fln.org'),
+    },
+    body: JSON.stringify({
+      name: 'Missing School',
+      classGroup: 'Class 2',
+      section: 'A',
+      dob: '2019-05-05',
+      aadharNumber: '5555 6666 7777',
+    }),
+  });
+
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.match(String(body.error ?? ''), /schoolId/i);
+});
 test('rejects invalid classGroup', async () => {
   const res = await api({
     name: 'Invalid Class Test',
@@ -269,7 +289,3 @@ test('rejects duplicate Aadhaar within the same bulk import', async () => {
 
   assert.equal(res.status, 200, `got ${res.status}: ${JSON.stringify(json)}`); assert.equal(json.created, 1); assert.equal(json.failed, 1); const failedRow = (json.results || []).find((r: any) => r.status === 'failed'); assert.ok(failedRow); assert.match(String(failedRow.reason || ''), /already registered/i);
 });
-
-
-
-
