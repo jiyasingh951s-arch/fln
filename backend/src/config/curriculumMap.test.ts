@@ -17,3 +17,11 @@ for (const [level, config] of Object.entries(CURRICULUM_MAPPING)) {
 }
 
 console.log(`PASS  isBalvatikaStage matches all ${passed} curriculum levels`);
+
+for (let level = 1; level <= 109; level++) {
+  assert.strictEqual(
+    isBalvatikaStage(level),
+    level >= 19 && level <= 46,
+    `Level ${level}`
+  );
+}
