@@ -289,3 +289,29 @@ test('rejects duplicate Aadhaar within the same bulk import', async () => {
 
   assert.equal(res.status, 200, `got ${res.status}: ${JSON.stringify(json)}`); assert.equal(json.created, 1); assert.equal(json.failed, 1); const failedRow = (json.results || []).find((r: any) => r.status === 'failed'); assert.ok(failedRow); assert.match(String(failedRow.reason || ''), /already registered/i);
 });
+
+test('rejects a dob that gives an age above 20', async () => {
+  const res = await api({
+    name: 'Too Old Test',
+    classGroup: 'Class 3',
+    section: 'A',
+    dob: '1990-01-01',
+    aadharNumber: '999900001111',
+  });
+
+  assert.equal(res.status, 400);
+  assert.match(res.json.error, /Computed age .* out of range/);
+});
+
+test('rejects a dob in the future', async () => {
+  const res = await api({
+    name: 'Future DOB Test',
+    classGroup: 'Class 3',
+    section: 'A',
+    dob: '2099-01-01',
+    aadharNumber: '999900002222',
+  });
+
+  assert.equal(res.status, 400);
+  assert.match(res.json.error, /Computed age .* out of range/);
+});
