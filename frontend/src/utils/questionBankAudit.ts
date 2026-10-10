@@ -1,5 +1,4 @@
-import { LEVEL_SKILL_MAP } from '../data/skillProgressionMap';
-
+import { MAX_FLN_LEVEL } from '../data/skillProgressionMap';
 export type IssueCategory =
   | 'MISSING_TEXT'
   | 'MISSING_ANSWER'
@@ -225,13 +224,13 @@ export function runQuestionBankAudit(questions: any[]): AuditResult {
       level === null ||
       !Number.isInteger(level) ||
       level < 1 ||
-      level > LEVEL_SKILL_MAP.length
+      level > MAX_FLN_LEVEL
     ) {
       addIssue(
         q,
         idx,
         'INVALID_LEVEL',
-        `FLN Level ${level !== null ? `"${level}"` : 'missing'} is outside the valid range 1–93.`
+        `FLN Level ${level !== null ? `"${level}"` : 'missing'} is outside the valid range 1–${MAX_FLN_LEVEL}.`
       );
     }
 
