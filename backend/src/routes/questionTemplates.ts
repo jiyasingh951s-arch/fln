@@ -19,12 +19,15 @@ import {
   MAX_SVG_THEMES,
 } from '../types/questionTemplateParams';
 import { isKnownThemeId, listThemes } from '../svgAssetCatalog';
+import { buildQuestionTemplateDownload } from '../services/questionTemplateDownload';
+import { isValidErrorTag } from '../errorTags';
 
 const MAX_NAME_CHARS = 200;
 const MAX_TAGS = 20;
 const MAX_TAG_CHARS = 40;
 /** Cap on one import. Large enough for a curriculum batch, small enough to stay a single round trip. */
 const MAX_IMPORT_ROWS = 1000;
+const ASSESSMENT_MODES = ['written', 'observed', 'both'] as const;
 
 const SUBJECT = 'question templates';
 
@@ -152,6 +155,28 @@ function normalizeTags(raw: unknown): string[] {
  * the form and the same row imported from a CSV are byte-for-byte the same
  * document, rather than two shapes that only mostly agree.
  */
+export function resolveTemplateTopic(conceptId: string, questionFamily?: string, explicitTopic?: string): string | null {
+  if (explicitTopic && typeof explicitTopic === 'string' && explicitTopic.trim()) {
+    return explicitTopic.trim().toLowerCase();
+  }
+  if (questionFamily) {
+    const qf = questionFamily.toLowerCase();
+    if (qf === 'counting') return 'counting';
+    if (qf === 'shape' || qf === 'shapes') return 'shapes';
+    if (qf === 'pattern' || qf === 'patterns') return 'patterns';
+    if (qf === 'literacy') return 'literacy';
+  }
+  const concept = getLevelForConcept(conceptId);
+  if (concept?.strand) {
+    const strand = concept.strand.toLowerCase();
+    if (strand.includes('shape')) return 'shapes';
+    if (strand.includes('pattern')) return 'patterns';
+    if (strand.includes('literacy')) return 'literacy';
+    if (strand.includes('number') || strand.includes('count')) return 'counting';
+  }
+  return null;
+}
+
 function buildTemplate(
   input: {
     conceptId: string;
@@ -163,6 +188,7 @@ function buildTemplate(
     params: QuestionTemplateParams;
     name: string;
     tags: string[];
+    errorTag?: string;
     source: 'form' | 'csv';
     /**
      * Optional, defaults to 'written' -- matches every template authored
@@ -207,6 +233,7 @@ function buildTemplate(
     name: input.name.trim() || deriveTemplateName(params),
     variantKey: variantKeyFor(input.conceptId, params),
     tags: input.tags,
+    errorTag: input.errorTag,
     source: input.source,
     createdBy: user.id,
     createdByEmail: user.email,
@@ -289,6 +316,18 @@ export function registerQuestionTemplateRoutes(app: express.Express) {
     res.type('text/csv').send(CSV_COLUMNS.join(',') + '\n');
   });
 
+  /** One download containing the unchanged import template and current references. */
+  app.get('/api/question-templates/csv-template.zip', async (req, res, next) => {
+    if (!requireSuperadmin(req, res, SUBJECT)) return;
+    try {
+      const archive = await buildQuestionTemplateDownload(CSV_COLUMNS, buildLevelMapPayload(), listThemes());
+      res.setHeader('Cache-Control', 'no-store');
+      res.attachment('question-authoring-template.zip').type('application/zip').send(archive);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/question-templates/stats', async (req, res) => {
     if (!requireSuperadmin(req, res, SUBJECT)) return;
     res.json(await dbStore.getQuestionTemplateStats(LEVEL_COUNT));
@@ -333,11 +372,27 @@ export function registerQuestionTemplateRoutes(app: express.Express) {
     const tags = normalizeTags(req.body?.tags);
     const name: string = (req.body?.name ?? '').trim();
 
+    const rawMode = req.body?.assessmentMode;
+    if (rawMode !== undefined && !(ASSESSMENT_MODES as readonly unknown[]).includes(rawMode)) {
+      return res.status(400).json({ error: 'assessmentMode must be written, observed or both.' });
+    }
+    const assessmentMode: 'written' | 'observed' | 'both' = rawMode ?? 'written';
+
     const problem = validateTemplate(conceptId, skills, subskills, generationIntent, questionFamily, svgThemeIds, answerSpec, params, tags, name);
     if (problem) return res.status(400).json({ error: problem });
 
+    const errorTag: string | undefined = req.body?.errorTag !== undefined && req.body?.errorTag !== null && String(req.body.errorTag).trim() !== ''
+      ? String(req.body.errorTag).trim()
+      : undefined;
+    if (errorTag) {
+      const topic = resolveTemplateTopic(conceptId, questionFamily, req.body?.topic);
+      if (!topic || !isValidErrorTag(topic, errorTag)) {
+        return res.status(400).json({ error: `Unknown error tag '${errorTag}'${topic ? ` for topic '${topic}'` : ''}.` });
+      }
+    }
+
     const template = buildTemplate(
-      { conceptId, skills, subskills, generationIntent, questionFamily: questionFamily as QuestionFamily, svgThemeIds, params, name, tags, source: 'form' },
+      { conceptId, skills, subskills, generationIntent, questionFamily: questionFamily as QuestionFamily, assessmentMode, svgThemeIds, params, name, tags, errorTag, source: 'form' },
       user,
       new Date().toISOString()
     );
@@ -392,7 +447,23 @@ export function registerQuestionTemplateRoutes(app: express.Express) {
       return res.status(400).json({ error: problem });
     }
 
+    const errorTag: string | undefined = req.body?.errorTag !== undefined
+      ? (req.body.errorTag && String(req.body.errorTag).trim() !== '' ? String(req.body.errorTag).trim() : undefined)
+      : current.errorTag;
+    if (errorTag) {
+      const topic = resolveTemplateTopic(conceptId, questionFamily, req.body?.topic);
+      if (!topic || !isValidErrorTag(topic, errorTag)) {
+        return res.status(400).json({ error: `Unknown error tag '${errorTag}'${topic ? ` for topic '${topic}'` : ''}.` });
+      }
+    }
+
     const concept = getLevelForConcept(conceptId)!;
+    const rawMode = req.body?.assessmentMode;
+    if (rawMode !== undefined && !(ASSESSMENT_MODES as readonly unknown[]).includes(rawMode)) {
+      return res.status(400).json({ error: 'assessmentMode must be written, observed or both.' });
+    }
+    const assessmentMode: 'written' | 'observed' | 'both' =
+      rawMode ?? (current.assessmentMode ?? 'written');
 
     // The name is the author's once they have edited it, so it is only
     // re-derived when the caller explicitly asks or has left it empty.
@@ -404,6 +475,7 @@ export function registerQuestionTemplateRoutes(app: express.Express) {
       levelName: getLevel(concept.levelNumber)!.capability,
       skills,
       subskills,
+      assessmentMode,
       generationIntent: generationIntent.trim(),
       questionFamily: questionFamily as QuestionFamily,
       paramMode: 'structured' as ParamMode,
@@ -422,6 +494,7 @@ export function registerQuestionTemplateRoutes(app: express.Express) {
       name: regenerate ? deriveTemplateName(params) : name,
       variantKey: variantKeyFor(conceptId, params),
       tags,
+      errorTag,
       updatedAt: new Date().toISOString(),
       updatedBy: user.id,
       updatedByEmail: user.email,
